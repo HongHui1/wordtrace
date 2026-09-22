@@ -77,7 +77,7 @@ WORDTRACE_KEY_PASSWORD=...
 
 未配置签名时，release 产物为未签名 APK。请妥善备份自己的密钥：后续覆盖安装需要同一签名。调试版与正式版的签名不同，切换前先导出记录，再卸载旧版本。
 
-Windows 可运行 `powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1`，自动在 `%LOCALAPPDATA%/WordTrace/signing` 创建一次本机发布密钥与凭据，再构建到 `dist/wordtrace-1.0.0.apk`。**请私下备份该 signing 文件夹，勿上传至 GitHub**；凭据文件包含密钥密码。
+Windows 可运行 `powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1`，自动在 `%LOCALAPPDATA%/WordTrace/signing` 创建一次本机发布密钥与凭据，再构建到 `dist/wordtrace-1.0.1.apk`。**请私下备份该 signing 文件夹，勿上传至 GitHub**；凭据文件包含密钥密码。
 
 ## GitHub 开源
 

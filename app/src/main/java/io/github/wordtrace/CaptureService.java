@@ -122,6 +122,8 @@ public class CaptureService extends Service {
         finally { old.close(); }
     }
     private void onImage(ImageReader source) {
+        // Keep the newest queued frame while slow devices finish the previous OCR task.
+        if (stopping || !active || busy) return;
         Image image = null;
         try {
             image = source.acquireLatestImage();

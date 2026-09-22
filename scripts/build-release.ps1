@@ -27,8 +27,12 @@ try {
     & $Gradle assembleRelease --console=plain
     if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
     New-Item -ItemType Directory -Force -Path dist | Out-Null
-    Copy-Item -LiteralPath app/build/outputs/apk/release/app-release.apk -Destination dist/wordtrace-1.0.0.apk
-    Get-FileHash -LiteralPath dist/wordtrace-1.0.0.apk -Algorithm SHA256
+    $buildConfigText = Get-Content -LiteralPath app/build.gradle -Raw
+    $versionMatch = [regex]::Match($buildConfigText, "versionName '([0-9.]+)'")
+    if (!$versionMatch.Success) { throw 'Could not read the app version.' }
+    $apkPath = Join-Path dist ('wordtrace-' + $versionMatch.Groups[1].Value + '.apk')
+    Copy-Item -LiteralPath app/build/outputs/apk/release/app-release.apk -Destination $apkPath
+    Get-FileHash -LiteralPath $apkPath -Algorithm SHA256
     Write-Output "Back up signing key and credentials privately: $signingDir"
 } finally {
     Remove-Item Env:WORDTRACE_STORE_PASSWORD,Env:WORDTRACE_KEY_PASSWORD,Env:WORDTRACE_KEYSTORE,Env:WORDTRACE_KEY_ALIAS -ErrorAction SilentlyContinue
