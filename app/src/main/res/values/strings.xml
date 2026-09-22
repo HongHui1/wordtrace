@@ -1,0 +1,4 @@
+<resources>
+    <string name="region_summary">识别 %1$d%% — %2$d%%</string>
+    <string name="overlay_state">%1$s\n拖动或轻触移动</string>
+</resources>

@@ -1,0 +1,10 @@
+<resources>
+    <color name="primary">#9ED4B1</color>
+    <color name="on_primary">#063923</color>
+    <color name="primary_container">#244D37</color>
+    <color name="surface">#111813</color>
+    <color name="ink">#E2E9DF</color>
+    <color name="secondary_ink">#B7C5B8</color>
+    <color name="outline">#3D4C40</color>
+    <bool name="light_bars">false</bool>
+</resources>

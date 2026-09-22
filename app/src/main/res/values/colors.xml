@@ -1,0 +1,9 @@
+<resources>
+    <color name="primary">#286449</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="primary_container">#DBEBDE</color>
+    <color name="surface">#F8F9F3</color>
+    <color name="ink">#1B211C</color>
+    <color name="secondary_ink">#525D54</color>
+    <color name="outline">#D5DDD3</color>
+</resources>
