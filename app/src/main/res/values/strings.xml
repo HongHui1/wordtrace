@@ -1,4 +1,6 @@
 <resources>
+    <string name="accessibility_label">WordTrace 录屏兼容识别</string>
+    <string name="accessibility_summary">仅在你开始记录后获取画面并离线识别英文</string>
+    <string name="accessibility_description">用于录屏兼容模式：仅在你点击悬浮球开始后，约每秒获取整个屏幕画面，在本机识别英文单词；只保存单词和次数，不保存或上传截图。不读取界面控件、不点击、不输入。暂停或结束后不再请求画面。此方式不启动屏幕共享，可用于需要同时录屏的场景。你可随时在系统设置中关闭服务。</string>
     <string name="region_summary">识别 %1$d%% — %2$d%%</string>
-    <string name="overlay_state">%1$s\n拖动或轻触移动</string>
 </resources>

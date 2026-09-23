@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" tools:targetApi="31"
+    android:description="@string/accessibility_description"
+    android:summary="@string/accessibility_summary"
+    android:settingsActivity="io.github.wordtrace.MainActivity"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="false"
+    android:canPerformGestures="false"
+    android:canTakeScreenshot="true"
+    android:isAccessibilityTool="false" />

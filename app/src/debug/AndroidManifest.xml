@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <activity android:name=".ProjectionFixtureActivity" android:exported="true" />
+        <service android:name=".ProjectionFixtureService" android:exported="false" android:foregroundServiceType="mediaProjection" />
         <activity android:name=".OcrFixtureActivity" android:exported="true" android:launchMode="singleTop" />
     </application>
 </manifest>

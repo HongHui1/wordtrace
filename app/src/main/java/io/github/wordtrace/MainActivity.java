@@ -34,7 +34,7 @@ import java.util.concurrent.*;
 public class MainActivity extends AppCompatActivity {
     public static volatile boolean visible;
     private LinearLayout page, history;
-    private TextView status;
+    private TextView status, modeSummary;
     private MaterialButton start, finish;
     private SessionStore store;
     private SharedPreferences preferences;
@@ -86,17 +86,19 @@ public class MainActivity extends AppCompatActivity {
         MaterialButton help = button("使用说明", false); help.setOnClickListener(v -> showHelp()); header.addView(help); page.addView(header);
         gap(page, 28);
         page.addView(text("专心记忆，\n让单词留下来。", 30, true));
-        TextView intro = text("在不背单词中学习，用悬浮窗记录遇见的英文。", 15, false); intro.setTextColor(color(R.color.secondary_ink)); add(page, intro, 12);
+        TextView intro = text("在不背单词中学习，用悬浮球记录遇见的英文。", 15, false); intro.setTextColor(color(R.color.secondary_ink)); add(page, intro, 12);
         LinearLayout capture = column(); capture.setPadding(dp(20), dp(20), dp(20), dp(20)); capture.setBackground(background(R.color.primary_container, 16)); add(page, capture, 24);
         status = text("准备开始", 18, true); capture.addView(status);
-        add(capture, text("点击悬浮窗「开始」后授权屏幕共享；\n点击「结束」自动保存单词和次数。", 14, false), 8);
-        start = button("打开悬浮窗", true); add(capture, start, 16); start.setOnClickListener(v -> begin());
+        add(capture, text("轻触小球展开操作，按住可拖动。\n开始记录后，点「结束并保存」生成词表。", 14, false), 8);
+        start = button("打开悬浮球", true); add(capture, start, 16); start.setOnClickListener(v -> begin());
         finish = button("结束当前记录并保存", false); add(capture, finish, 4);
         finish.setOnClickListener(v -> {
             if (CaptureService.active) { startService(new Intent(this, CaptureService.class).setAction(CaptureService.STOP)); stopService(new Intent(this, OverlayService.class)); }
             else inform("当前没有正在进行的记录");
         });
         add(page, text("识别偏好", 21, true), 28);
+        MaterialButton source = button("选择采集方式", false); source.setOnClickListener(v -> editSource()); add(page, source, 8);
+        modeSummary = text("", 13, false); modeSummary.setTextColor(color(R.color.secondary_ink)); page.addView(modeSummary);
         MaterialSwitch large = new MaterialSwitch(this); large.setText("优先识别大字目标词"); large.setTextSize(16); large.setMinHeight(dp(56)); large.setChecked(preferences.getBoolean("large", false));
         large.setOnCheckedChangeListener((v, checked) -> { preferences.edit().putBoolean("large", checked).apply(); if (CaptureService.active) inform("将在下次记录生效"); }); add(page, large, 8);
         TextView hint = text("关闭时记录全部英文；开启后按字号筛选，适合目标词较大的页面。", 13, false); hint.setTextColor(color(R.color.secondary_ink)); page.addView(hint);
@@ -109,9 +111,10 @@ public class MainActivity extends AppCompatActivity {
         TextView privacy = text("离线识别 · 不保存截图 · 无联网权限", 12, false); privacy.setTextColor(color(R.color.secondary_ink)); add(page, privacy, 32);
     }
     private void updateState() {
-        status.setText(CaptureService.saving ? "正在保存记录…" : CaptureService.active ? (CaptureService.paused ? "已暂停 · " : "记录中 · ") + CaptureService.unique + " 个单词" : OverlayService.running ? "悬浮窗已就绪" : "准备开始");
-        start.setText(OverlayService.running ? "悬浮窗已开启 · 返回学习" : "打开悬浮窗"); start.setEnabled(!CaptureService.saving);
+        status.setText(CaptureService.saving ? "正在保存记录…" : CaptureService.active ? (CaptureService.paused ? "已暂停 · " : "记录中 · ") + CaptureService.unique + " 个单词" : OverlayService.running ? "悬浮球已就绪" : "准备开始");
+        start.setText(OverlayService.running ? "悬浮球已开启 · 返回学习" : "打开悬浮球"); start.setEnabled(!CaptureService.saving);
         finish.setEnabled(CaptureService.active);
+        modeSummary.setText(CaptureMode.compatible(this) ? "录屏兼容模式 · " + (ScreenReaderService.available() ? "辅助服务已就绪" : "首次开始时需开启辅助服务") : "屏幕共享模式 · 可能中断系统录屏");
     }
     private void begin() {
         if (OverlayService.running) { moveTaskToBack(true); return; }
@@ -125,7 +128,7 @@ public class MainActivity extends AppCompatActivity {
         }
         if (!preferences.getBoolean("disclosure", false)) {
             new MaterialAlertDialogBuilder(this).setTitle("只在你开始后读取屏幕")
-                .setMessage("记录期间，WordTrace 会获取你授权的屏幕画面，并在本机识别英文。只保存单词和次数，不保存截图、不上传内容。\n\n建议在系统授权时仅选择不背单词；若选择整个屏幕，请避开不希望被记录的内容。你可随时暂停或结束。")
+                .setMessage("记录期间，WordTrace 会获取你授权的屏幕画面，并在本机识别英文。只保存单词和次数，不保存截图、不上传内容。\n\n录屏兼容模式读取整个屏幕，需要开启辅助服务；旧的屏幕共享模式可能中断系统录屏。请只在学习时开始，你可随时暂停或结束。")
                 .setNegativeButton("取消", null).setPositiveButton("了解，继续", (d,w) -> { preferences.edit().putBoolean("disclosure", true).apply(); requestNotifications(); }).show();
         } else requestNotifications();
     }
@@ -136,7 +139,7 @@ public class MainActivity extends AppCompatActivity {
         } else showOverlay();
     }
     private void showOverlay() {
-        try { ContextCompat.startForegroundService(this, new Intent(this, OverlayService.class)); inform("已打开悬浮窗，切换到不背单词后点「开始」"); }
+        try { ContextCompat.startForegroundService(this, new Intent(this, OverlayService.class)); inform("已打开悬浮球，切换到不背单词后轻触小球开始"); }
         catch (RuntimeException e) { inform("悬浮窗启动失败，请检查系统悬浮窗权限"); }
         updateState();
     }
@@ -151,6 +154,18 @@ public class MainActivity extends AppCompatActivity {
         new MaterialAlertDialogBuilder(this).setTitle("识别区域").setView(form).setNegativeButton("取消", null)
             .setNeutralButton("全屏", (d,w) -> { preferences.edit().putInt("top",0).putInt("bottom",100).apply(); inform("下次记录将识别全屏"); })
             .setPositiveButton("保存", (d,w) -> { preferences.edit().putInt("top",slider.getValues().get(0).intValue()).putInt("bottom",slider.getValues().get(1).intValue()).apply(); inform("已保存，下次记录生效"); }).show();
+    }
+    private void editSource() {
+        if (CaptureService.active || CaptureService.saving) { inform("请先结束当前记录，再切换采集方式"); return; }
+        if (Build.VERSION.SDK_INT < 30) {
+            new MaterialAlertDialogBuilder(this).setTitle("需要 Android 11 及以上")
+                .setMessage("当前安卓版本只能使用屏幕共享模式，可能中断系统录屏。小球可以正常使用，同时录屏需要更新的安卓版本。")
+                .setPositiveButton("知道了", null).show(); return;
+        }
+        new MaterialAlertDialogBuilder(this).setTitle("选择采集方式")
+            .setSingleChoiceItems(new String[]{"录屏兼容模式（推荐）", "屏幕共享模式（可能中断录屏）"}, CaptureMode.compatible(this) ? 0 : 1, (d,index) -> {
+                preferences.edit().putBoolean("compatible", index == 0).apply(); d.dismiss(); updateState();
+            }).setNegativeButton("取消", null).show();
     }
     private void editIgnored() {
         LinearLayout form = column(); form.setPadding(dp(24), dp(8), dp(24), 0);
@@ -225,7 +240,7 @@ public class MainActivity extends AppCompatActivity {
     }
     private void showHelp() {
         new MaterialAlertDialogBuilder(this).setTitle("让 WordTrace 陪你记单词")
-            .setMessage("1. 允许悬浮窗，点击「打开悬浮窗」。\n2. 切换到不背单词，点悬浮窗「开始」。\n3. 同意系统屏幕共享。支持时优先只共享不背单词。\n4. 正常背词；需要时暂停，完成后点「结束」。\n5. 回到学习记录，查看词表并分享或另存。\n\n频次规则\n同一词持续显示只记一次。同屏重复只记一次；在有效识别帧中消失至少约 2 秒后再次出现，加一次。按小写归并，不合并单复数。\n\n使用提示\n约每秒识别一次，快速翻页可能漏词。OCR 可能误认音标、短词或漏掉小字；大字模式是字号筛选，并非不背单词专用接口。可结合识别区域与忽略词减少干扰。受保护的页面无法识别。\n\n结束后自动生成 CSV 和 TXT，保存在应用内；卸载会删除，请及时另存。锁屏、系统终止共享会结束记录；意外退出后可恢复最后保存的词表。\n\n隐私\n所有识别在本机进行，没有联网权限，不保存截图。返回本应用时自动跳过识别，防止重复记录词表。\n\nWordTrace 1.0.1 · MIT\n离线 OCR 使用 Google ML Kit（遵循其独立条款）。本项目与不背单词无隶属关系。")
+            .setMessage("1. 允许悬浮窗，点击「打开悬浮球」。\n2. 切换到不背单词，点小球展开后「开始」。\n3. Android 11+ 默认使用录屏兼容模式，首次需在系统中开启 WordTrace 辅助服务，再返回学习页面点击开始。旧模式可能中断录屏。\n4. 正常背词；需要时暂停，完成后点「结束」。\n5. 回到学习记录，查看词表并分享或另存。\n\n频次规则\n同一词持续显示只记一次。同屏重复只记一次；在有效识别帧中消失至少约 2 秒后再次出现，加一次。按小写归并，不合并单复数。\n\n使用提示\n约每秒识别一次，快速翻页可能漏词。OCR 可能误认音标、短词或漏掉小字；大字模式是字号筛选，并非不背单词专用接口。可结合识别区域与忽略词减少干扰。受保护的页面无法识别。\n\n结束后自动生成 CSV 和 TXT，保存在应用内；卸载会删除，请及时另存。锁屏、系统终止共享会结束记录；意外退出后可恢复最后保存的词表。\n\n隐私\n所有识别在本机进行，没有联网权限，不保存截图。返回本应用时自动跳过识别，防止重复记录词表。\n\nWordTrace 1.1.0 · MIT\n离线 OCR 使用 Google ML Kit（遵循其独立条款）。本项目与不背单词无隶属关系。")
             .setPositiveButton("知道了", null).show();
     }
     @Override protected void onResume() {

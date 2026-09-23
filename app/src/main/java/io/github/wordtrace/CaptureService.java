@@ -36,11 +36,12 @@ public class CaptureService extends Service {
     private WordCounter counter;
     private boolean stopping, busy, warmResume, hidden;
     private int width, height, density, top, bottom, errors;
-    private boolean largeOnly;
+    private boolean largeOnly, compatible, screenshotPending;
     private final Runnable sample = new Runnable() {
         @Override public void run() {
             if (stopping) return;
-            if (reader != null) onImage(reader);
+            if (compatible) sampleCompatible();
+            else if (reader != null) onImage(reader);
             main.postDelayed(this, 1000);
         }
     };
@@ -72,12 +73,16 @@ public class CaptureService extends Service {
         }
         if (active || stopping) return START_NOT_STICKY;
         try {
+            compatible = intent.getBooleanExtra("compatible", false);
             Notification notification = notification("正在准备离线识别");
-            if (Build.VERSION.SDK_INT >= 29) startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
+            if (compatible && Build.VERSION.SDK_INT >= 34) startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            else if (compatible && Build.VERSION.SDK_INT >= 29) startForeground(1, notification, 0);
+            else if (!compatible && Build.VERSION.SDK_INT >= 29) startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
             else startForeground(1, notification);
             active = true;
             Intent data = intent.getParcelableExtra("data");
-            if (data == null) throw new IllegalArgumentException("Missing capture consent");
+            if (!compatible && data == null) throw new IllegalArgumentException("Missing capture consent");
+            if (compatible && (Build.VERSION.SDK_INT < 30 || !ScreenReaderService.available())) throw new IllegalStateException("辅助服务未开启");
             store = new SessionStore(this); store.recover();
             session = store.create(); store.save(session);
             SharedPreferences settings = getSharedPreferences("settings", MODE_PRIVATE);
@@ -85,6 +90,7 @@ public class CaptureService extends Service {
             top = settings.getInt("top", 0); bottom = settings.getInt("bottom", 100);
             largeOnly = settings.getBoolean("large", false);
             recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+            if (!compatible) {
             projection = getSystemService(MediaProjectionManager.class).getMediaProjection(intent.getIntExtra("code", Activity.RESULT_OK), data);
             projection.registerCallback(callback, main);
             DisplayMetrics metrics = new DisplayMetrics();
@@ -94,14 +100,46 @@ public class CaptureService extends Service {
             reader = newReader();
             display = projection.createVirtualDisplay("WordTrace", width, height, density,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader.getSurface(), null, main);
+            }
             active = true; paused = false; saving = false; unique = 0; total = 0; message = "识别中";
-            main.post(sample);
+            // Let the consent activity and system transition leave the captured screen.
+            main.postDelayed(sample, 1000);
             updateNotification();
         } catch (Exception e) {
-            recordError("屏幕共享启动失败，请重新授权。" + e.getClass().getSimpleName());
+            recordError(compatible ? "兼容识别启动失败，请检查 WordTrace 辅助服务是否已开启。" : "屏幕共享启动失败，请重新授权。" + e.getClass().getSimpleName());
             finishRecording("interrupted");
         }
         return START_NOT_STICKY;
+    }
+    private boolean skipFrame() {
+        return paused || hidden || MainActivity.visible || CaptureConsentActivity.visible || getSystemService(KeyguardManager.class).isKeyguardLocked();
+    }
+    private void sampleCompatible() {
+        if (Build.VERSION.SDK_INT < 30 || stopping || !active) return;
+        if (!ScreenReaderService.available()) {
+            recordError("辅助服务已关闭，记录已保存。请重新开启服务后再开始。"); finishRecording("interrupted"); return;
+        }
+        if (skipFrame()) { warmResume = true; return; }
+        if (busy || screenshotPending) return;
+        screenshotPending = true;
+        ScreenReaderService.requestFrame(new ScreenReaderService.FrameCallback() {
+            @Override public void success(Bitmap bitmap) {
+                screenshotPending = false;
+                if (stopping || !active || skipFrame()) { bitmap.recycle(); warmResume = true; return; }
+                processFrame(bitmap);
+            }
+            @Override public void failure(int code) {
+                screenshotPending = false;
+                if (stopping || !active) return;
+                // Unsupported/secure pages are not an empty observation and must not inflate counts.
+                warmResume = true;
+                message = "画面暂不可读";
+                if (++errors >= 5) {
+                    recordError("兼容模式无法读取当前画面，已保存记录。请检查辅助服务、受保护页面或系统限制；不会自动切换屏幕共享。");
+                    finishRecording("interrupted");
+                }
+            }
+        });
     }
     private void setSize(int w, int h) {
         float factor = Math.min(1f, 1600f / Math.max(w, h));
@@ -128,19 +166,34 @@ public class CaptureService extends Service {
         try {
             image = source.acquireLatestImage();
             if (image == null || stopping || !active || busy) return;
-            if (paused || hidden || MainActivity.visible || getSystemService(KeyguardManager.class).isKeyguardLocked()) { warmResume = true; return; }
+            if (skipFrame()) { warmResume = true; return; }
             Image.Plane plane = image.getPlanes()[0]; ByteBuffer buffer = plane.getBuffer();
             int rowPixels = plane.getRowStride() / plane.getPixelStride();
             Bitmap padded = Bitmap.createBitmap(rowPixels, image.getHeight(), Bitmap.Config.ARGB_8888);
             padded.copyPixelsFromBuffer(buffer);
-            int y = image.getHeight() * top / 100;
-            int cropHeight = Math.max(1, image.getHeight() * (bottom - top) / 100);
-            Bitmap crop = Bitmap.createBitmap(padded, 0, y, image.getWidth(), Math.min(cropHeight, image.getHeight() - y));
-            if (crop != padded) padded.recycle();
+            Bitmap frame = Bitmap.createBitmap(padded, 0, 0, image.getWidth(), image.getHeight());
+            if (frame != padded) padded.recycle();
+            processFrame(frame);
+        } catch (RuntimeException e) {
+            if (!stopping) { recordError("无法读取屏幕画面，请结束后重新授权。"); finishRecording("interrupted"); }
+        } finally { if (image != null) image.close(); }
+    }
+    private void processFrame(Bitmap frame) {
+        Bitmap prepared = frame;
+        try {
+            float scale = Math.min(1f, 1600f / Math.max(frame.getWidth(), frame.getHeight()));
+            Bitmap scaled = Bitmap.createScaledBitmap(frame, Math.max(1, Math.round(frame.getWidth() * scale)), Math.max(1, Math.round(frame.getHeight() * scale)), true);
+            if (scaled != frame) frame.recycle();
+            prepared = scaled;
+            int y = scaled.getHeight() * top / 100;
+            int cropHeight = Math.max(1, scaled.getHeight() * (bottom - top) / 100);
+            Bitmap crop = Bitmap.createBitmap(scaled, 0, y, scaled.getWidth(), Math.min(cropHeight, scaled.getHeight() - y));
+            if (crop != scaled) scaled.recycle();
+            prepared = crop;
             busy = true;
             recognizer.process(InputImage.fromBitmap(crop, 0))
                 .addOnSuccessListener(result -> {
-                    if (!stopping && active && !paused && !hidden && !MainActivity.visible) {
+                    if (!stopping && active && !skipFrame()) {
                         errors = 0;
                         String text = selectText(result);
                         if (warmResume) { counter.resume(text, SystemClock.elapsedRealtime()); warmResume = false; }
@@ -156,8 +209,10 @@ public class CaptureService extends Service {
                 })
                 .addOnCompleteListener(task -> { crop.recycle(); busy = false; });
         } catch (RuntimeException e) {
+            if (!prepared.isRecycled()) prepared.recycle();
+            busy = false;
             if (!stopping) { recordError("无法读取屏幕画面，请结束后重新授权。"); finishRecording("interrupted"); }
-        } finally { if (image != null) image.close(); }
+        }
     }
     private String selectText(Text text) {
         if (!largeOnly) return text.getText();

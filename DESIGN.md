@@ -63,7 +63,7 @@ spacing:
 
 A quiet reading desk: warm neutral surfaces, ink-colored text, and deep green primary controls. The built interface uses native Android Java with Material 3 DayNight components, system sans typography, Chinese task labels, and no decorative imagery. Dark mode uses charcoal surfaces and pale green controls.
 
-The central flow is to open the floating control, authorize screen sharing from its Start action, record while studying, end and save, then review and export the vocabulary list. This is an on-device OCR companion for Chinese-speaking learners using 不背单词, not an integration with that app.
+The central flow is to open the floating ball, enable the screenshot accessibility service on Android 11+ (or explicitly authorize legacy screen sharing), record while studying, end and save, then review and export the vocabulary list. This is an on-device OCR companion for Chinese-speaking learners using 不背单词, not an integration with that app.
 
 ## Colors
 
@@ -79,25 +79,25 @@ Use Android system `sans` and sp sizing. The hierarchy is 30sp bold introductory
 
 The main screen is one vertically scrolling column, centered with a maximum outer width of 760dp on tablets. Page padding is 24dp horizontally, 20dp above, and 40dp below. System-bar and display-cutout insets are applied to the scroll container. The reading order is header and help, introductory message, recording panel, recognition preferences, history, then privacy footer.
 
-The recording panel has 20dp internal padding. Repeated gaps use the recorded 4–40dp spacing values: 8dp for close associations, 16dp around actions, and 24–28dp between larger sections. Dialog content uses 24dp horizontal padding. Main Material buttons and the search field have a 48dp minimum height; the preference switch uses 56dp and history actions 76dp. Floating actions are 96 × 48dp, with a status/drag target at least 48dp high.
+The recording panel has 20dp internal padding. Repeated gaps use the recorded 4–40dp spacing values: 8dp for close associations, 16dp around actions, and 24–28dp between larger sections. Dialog content uses 24dp horizontal padding. Main Material buttons and the search field have a 48dp minimum height; the preference switch uses 56dp and history actions 76dp. The floating ball is 36dp in a 48 × 48dp touch target; expanded menu actions are at least 48dp high.
 
 Post-build UI review covered phone and tablet layouts, plus dark theme at font scale 1.3, and returned a ship disposition. This records visual review scope; compatibility with the user's installed 不背单词 version still requires device validation.
 
 ## Elevation & Depth
 
-The main screen uses tonal grouping rather than custom shadows. The floating control has 4dp elevation to distinguish it from the underlying study app. Material dialogs and control interaction feedback retain native behavior.
+The main screen uses tonal grouping rather than custom shadows. The floating ball uses a solid primary color against the underlying study app. Material dialogs and control interaction feedback retain native behavior.
 
 ## Shapes
 
-Main-screen buttons use 12dp corners. The recording panel and floating control use 16dp corners. A single 1dp divider separates preferences from history. Inputs, switch, range slider, and dialogs retain Material shapes instead of custom decorative treatments.
+Main-screen buttons use 12dp corners. The recording panel and expanded floating menu use 16dp corners; the collapsed ball is circular. A single 1dp divider separates preferences from history. Inputs, switch, range slider, and dialogs retain Material shapes instead of custom decorative treatments.
 
 ## Components
 
 - **Recording panel:** state text distinguishes ready, floating control ready, recording with word count, paused, and saving. The primary action opens the control or returns to study when it is open. End-and-save is enabled during an active session; saving disables the start action.
-- **Floating control:** 112dp-wide vertical panel with 8dp padding, a 12sp Chinese status label, and 14sp native button labels. Actions change between 开始 / 暂停 / 继续 and 关闭 / 结束. Drag the status label to move; tap it to switch docking edge. Both buttons disable while saving. Status is also available through foreground notifications.
+- **Floating control:** 36dp visible circle in a 48dp window. Tap to expand a 176dp menu showing status, start / pause / resume, end-and-save / close, and collapse. Drag the ball to move it. Actions collapse the menu; it also collapses after eight seconds. Play, recording dot, pause, and saving ring indicate state without English OCR noise. Both actions disable while saving. Notifications provide status and stop controls.
 - **Preferences:** Material switch for large-text filtering, a range-slider dialog for screen-height percentages, and a multiline ignored-word field. Changes affect the next recording. Range values advance in 5% steps with at least 10% separation.
 - **History:** text-based session actions show date, unique words, total occurrences, and relevant recording/recovery state. Empty history explains how to create the first record. Session dialogs provide search, a 240dp-high scrolling word list, export, and deletion with confirmation; active records cannot be deleted.
-- **Permissions and feedback:** Material dialogs explain overlay permission and local screen processing before the Android consent flow. Snackbars acknowledge saves and settings or explain recoverable failures. Export offers CSV/TXT sharing and the system save-file picker.
+- **Permissions and feedback:** Dialogs explain overlay permission and local screen processing before accessibility settings or the Android screen-sharing consent flow. Legacy mode warns of recording interruption. Snackbars acknowledge saves and settings or explain recoverable failures. Export offers CSV/TXT sharing and the system save-file picker.
 
 ## Do's and Don'ts
 
