@@ -39,7 +39,27 @@ public class DeviceIntegrationTest {
             assertEquals(Map.of("apple", 2, "banana", 1), loaded.words);
             store.finish(loaded, "interrupted");
             assertTrue(new String(Files.readAllBytes(store.export(loaded, "csv").toPath()), StandardCharsets.UTF_8).contains("\"apple\",2"));
-            assertTrue(new String(Files.readAllBytes(store.export(loaded, "txt").toPath()), StandardCharsets.UTF_8).contains("banana\t1"));
+            assertEquals("apple\nbanana\n",new String(Files.readAllBytes(store.export(loaded, "txt").toPath()), StandardCharsets.UTF_8));
         } finally { store.delete(session); }
+    }
+    @Test public void actualOcrReassemblesSpacedLettersAndRejectsIncompleteWord() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        OcrWords words = new OcrWords(context);
+        TextRecognizer recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+        try {
+            for (String text : new String[]{"apple", "a p p l e", "a p p l"}) {
+                Bitmap bitmap = Bitmap.createBitmap(1100, 600, Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(bitmap); canvas.drawColor(Color.WHITE);
+                Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG); paint.setColor(Color.BLACK); paint.setTextSize(100);
+                canvas.drawText(text,100,220,paint);
+                paint.setTextSize(28); canvas.drawText("This is an example sentence.",100,350,paint);
+                try {
+                    Text result = Tasks.await(recognizer.process(InputImage.fromBitmap(bitmap,0)),30,TimeUnit.SECONDS);
+                    java.util.Set<String> actual = words.extract(result,true);
+                    if (text.equals("a p p l")) assertTrue(result.getText()+" => "+actual,actual.isEmpty());
+                    else assertEquals(result.getText(),java.util.Set.of("apple"),actual);
+                } finally { bitmap.recycle(); }
+            }
+        } finally { recognizer.close(); }
     }
 }

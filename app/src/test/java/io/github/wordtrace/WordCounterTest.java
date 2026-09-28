@@ -44,6 +44,6 @@ public class WordCounterTest {
     }
     @Test public void exportsContainCountsAndExcelBom() {
         assertEquals("\uFEFFword,count\r\n\"apple\",2\r\n", Exports.csv(Map.of("apple", 2)));
-        assertTrue(Exports.txt(Map.of("apple", 2)).contains("apple\t2"));
+        assertEquals("apple\n", Exports.txt(Map.of("apple", 2)));
     }
 }

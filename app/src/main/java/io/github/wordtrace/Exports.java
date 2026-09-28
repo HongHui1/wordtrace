@@ -12,8 +12,8 @@ public final class Exports {
         return out.toString();
     }
     public static String txt(Map<String, Integer> words) {
-        StringBuilder out = new StringBuilder("WordTrace 单词记录\n单词\t出现次数\n");
-        words.forEach((word, count) -> out.append(word).append('\t').append(count).append('\n'));
+        StringBuilder out = new StringBuilder();
+        for (String word : new java.util.TreeSet<>(words.keySet())) out.append(word).append('\n');
         return out.toString();
     }
 }

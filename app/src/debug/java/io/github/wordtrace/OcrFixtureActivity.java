@@ -15,7 +15,7 @@ public class OcrFixtureActivity extends Activity {
     private void render(Intent i) {
         LinearLayout layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); layout.setGravity(Gravity.CENTER); layout.setBackgroundColor(Color.WHITE);
         TextView word = new TextView(this); word.setText(i.getStringExtra("word") == null ? "apple" : i.getStringExtra("word"));
-        word.setTextSize(56); word.setTextColor(Color.BLACK); word.setGravity(Gravity.CENTER); layout.addView(word);
+        word.setTextSize(56); word.setLetterSpacing(i.getFloatExtra("spacing", 0)); word.setTextColor(Color.BLACK); word.setGravity(Gravity.CENTER); layout.addView(word);
         TextView meaning = new TextView(this); meaning.setText("识别测试页 · 示例词"); meaning.setTextSize(18); meaning.setTextColor(Color.DKGRAY); meaning.setGravity(Gravity.CENTER); layout.addView(meaning);
         setContentView(layout);
     }

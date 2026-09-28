@@ -1,109 +1,29 @@
----
-name: WordTrace
-description: Native Android companion for collecting English words during study.
-colors:
-  primary: "#286449"
-  on-primary: "#FFFFFF"
-  primary-container: "#DBEBDE"
-  surface: "#F8F9F3"
-  ink: "#1B211C"
-  secondary-ink: "#525D54"
-  outline: "#D5DDD3"
-  dark-primary: "#9ED4B1"
-  dark-on-primary: "#063923"
-  dark-primary-container: "#244D37"
-  dark-surface: "#111813"
-  dark-ink: "#E2E9DF"
-  dark-secondary-ink: "#B7C5B8"
-  dark-outline: "#3D4C40"
-typography:
-  headline:
-    fontFamily: "sans"
-    fontSize: "30sp"
-    fontWeight: 700
-  brand:
-    fontFamily: "sans"
-    fontSize: "28sp"
-    fontWeight: 700
-  section:
-    fontFamily: "sans"
-    fontSize: "21sp"
-    fontWeight: 700
-  status:
-    fontFamily: "sans"
-    fontSize: "18sp"
-    fontWeight: 700
-  body:
-    fontFamily: "sans"
-    fontSize: "14sp"
-  button:
-    fontFamily: "sans"
-    fontSize: "15sp"
-  caption:
-    fontFamily: "sans"
-    fontSize: "12sp"
-rounded:
-  button: "12dp"
-  container: "16dp"
-spacing:
-  tight: "4dp"
-  small: "8dp"
-  compact: "12dp"
-  medium: "16dp"
-  panel: "20dp"
-  page: "24dp"
-  section: "28dp"
-  footer: "32dp"
-  bottom: "40dp"
----
+# Design System: WordTrace 1.2
 
-# Design System: WordTrace
+The native Android app uses Material 3 DayNight with a quiet green palette. This revision simplifies the existing identity around one task: collect words, then save text.
 
-## Overview
+## Color and typography
 
-A quiet reading desk: warm neutral surfaces, ink-colored text, and deep green primary controls. The built interface uses native Android Java with Material 3 DayNight components, system sans typography, Chinese task labels, and no decorative imagery. Dark mode uses charcoal surfaces and pale green controls.
+Resource tokens remain the source of truth: `values/colors.xml` and `values-night/colors.xml`. Primary is #286449 in light mode and #9ED4B1 in dark mode. Warm #F8F9F3 / charcoal #111813 surfaces use the existing ink and secondary-ink roles. Dialog surfaces follow the surface token. System status and navigation icons adapt to theme.
 
-The central flow is to open the floating ball, enable the screenshot accessibility service on Android 11+ (or explicitly authorize legacy screen sharing), record while studying, end and save, then review and export the vocabulary list. This is an on-device OCR companion for Chinese-speaking learners using 不背单词, not an integration with that app.
+System sans type: brand 24sp bold; recording state and section titles 20sp bold; supporting copy 14sp; buttons 15sp; footer 12sp. All text uses sp. There is no oversized promotional headline.
 
-## Colors
+## Main screen
 
-The frontmatter records `values/colors.xml` and `values-night/colors.xml`; `dark-*` denotes the corresponding night resource, not a separate UI role. Theme `Theme.Material3.DayNight.NoActionBar` selects these resources automatically.
+One scrollable column, at most 760dp wide, centered on tablets. Page padding 24dp horizontal, 20dp top, 40dp bottom; system bars and cutouts get insets. A 24sp wordmark and Help action lead to a short explanation and a tonal recording panel. The panel has 20dp padding, 16dp corners, current state, brief instructions, and a 56dp primary Open ball button. End-and-save appears only while recording or saving.
 
-Use `primary` / `on-primary` for the filled main action, `primary-container` / `ink` for the recording panel and floating control, and `surface` / `ink` for the page. `secondary-ink` supports explanatory text and the privacy footer. `outline` is the 1dp section divider. System bars follow the page surface, with light or dark icon appearance set by theme.
+Recognition settings are behind one entry: content, height range, ignored words. The visible summary states whether target words or all English are selected. A 1dp explicit-height divider separates setup from My word lists. History rows show date and unique word count, never frequency. Empty history names the next action.
 
-## Typography
+Word-list dialogs contain search and alphabetically sorted words without counts. Export offers save TXT, share TXT, or copy words. TXT has one word per line, no header. Deletion requires confirmation and is disabled while recording. Old record contents are preserved.
 
-Use Android system `sans` and sp sizing. The hierarchy is 30sp bold introductory headline, 28sp bold wordmark, 21sp bold section headings, and 18sp bold recording status. Supporting titles and the preference switch use 16sp; intro and main-screen buttons use 15sp; body copy uses 14sp; preference help uses 13sp; privacy and count explanations use 12sp. Text created by the main-screen helper adds 3dp line spacing. Native controls retain their own text metrics; buttons do not force uppercase.
+## Floating control
 
-## Layout
+36dp solid circle within a 48dp touch window, draggable. Tap opens the existing 176dp menu with start / pause / resume, end-and-save / close, and collapse. Actions collapse the menu; idle timeout is eight seconds. Play, dot, pause, and ring indicate ready, recording, paused, and saving. No English labels contaminate OCR. Buttons remain at least 48dp tall.
 
-The main screen is one vertically scrolling column, centered with a maximum outer width of 760dp on tablets. Page padding is 24dp horizontally, 20dp above, and 40dp below. System-bar and display-cutout insets are applied to the scroll container. The reading order is header and help, introductory message, recording panel, recognition preferences, history, then privacy footer.
+## Permissions and feedback
 
-The recording panel has 20dp internal padding. Repeated gaps use the recorded 4–40dp spacing values: 8dp for close associations, 16dp around actions, and 24–28dp between larger sections. Dialog content uses 24dp horizontal padding. Main Material buttons and the search field have a 48dp minimum height; the preference switch uses 56dp and history actions 76dp. The floating ball is 36dp in a 48 × 48dp touch target; expanded menu actions are at least 48dp high.
+A single screen-sharing path. No accessibility service or capture-mode selector. Clear disclosure explains local processing and the conflict with system recording before the OS consent dialog. System sharing, permission, and save-file interfaces remain native. Settings take effect on the next recording; transient feedback uses snackbars.
 
-Post-build UI review covered phone and tablet layouts, plus dark theme at font scale 1.3, and returned a ship disposition. This records visual review scope; compatibility with the user's installed 不背单词 version still requires device validation.
+## Removed complexity
 
-## Elevation & Depth
-
-The main screen uses tonal grouping rather than custom shadows. The floating ball uses a solid primary color against the underlying study app. Material dialogs and control interaction feedback retain native behavior.
-
-## Shapes
-
-Main-screen buttons use 12dp corners. The recording panel and expanded floating menu use 16dp corners; the collapsed ball is circular. A single 1dp divider separates preferences from history. Inputs, switch, range slider, and dialogs retain Material shapes instead of custom decorative treatments.
-
-## Components
-
-- **Recording panel:** state text distinguishes ready, floating control ready, recording with word count, paused, and saving. The primary action opens the control or returns to study when it is open. End-and-save is enabled during an active session; saving disables the start action.
-- **Floating control:** 36dp visible circle in a 48dp window. Tap to expand a 176dp menu showing status, start / pause / resume, end-and-save / close, and collapse. Drag the ball to move it. Actions collapse the menu; it also collapses after eight seconds. Play, recording dot, pause, and saving ring indicate state without English OCR noise. Both actions disable while saving. Notifications provide status and stop controls.
-- **Preferences:** Material switch for large-text filtering, a range-slider dialog for screen-height percentages, and a multiline ignored-word field. Changes affect the next recording. Range values advance in 5% steps with at least 10% separation.
-- **History:** text-based session actions show date, unique words, total occurrences, and relevant recording/recovery state. Empty history explains how to create the first record. Session dialogs provide search, a 240dp-high scrolling word list, export, and deletion with confirmation; active records cannot be deleted.
-- **Permissions and feedback:** Dialogs explain overlay permission and local screen processing before accessibility settings or the Android screen-sharing consent flow. Legacy mode warns of recording interruption. Snackbars acknowledge saves and settings or explain recoverable failures. Export offers CSV/TXT sharing and the system save-file picker.
-
-## Do's and Don'ts
-
-- **Do** keep Chinese task labels, explicit state text, scalable sp typography, and at least 48dp action targets.
-- **Do** preserve the centered single-column layout and light/night semantic color pairing.
-- **Do** describe counts as appearances: continuous visibility counts once, and same-screen duplicates count once.
-- **Don't** imply guaranteed OCR accuracy, capture of protected screens, or an official 不背单词 integration.
-- **Don't** add English labels to the floating control; its Chinese labels reduce interference with English OCR.
-- **Don't** replace the native system consent, sharing, and file-saving flows with imitation screens.
+Removed the oversized hero, permanently disabled End button, frequency labels, CSV choices, and two competing capture modes. Core recognition settings remain accessible rather than overwhelming the main screen. The low-level legacy record reader still supports old counts, but they are not treated as reliable product output.

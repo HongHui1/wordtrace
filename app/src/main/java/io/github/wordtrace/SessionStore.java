@@ -49,7 +49,7 @@ public final class SessionStore {
     public synchronized void finish(Session s, String status) throws IOException {
         s.ended = System.currentTimeMillis(); s.status = status;
         save(s); // Preserve canonical data even if an export fails.
-        export(s, "csv"); export(s, "txt");
+        export(s, "txt");
     }
     public synchronized File export(Session s, String format) throws IOException {
         if (!format.equals("csv") && !format.equals("txt")) throw new IOException("不支持的格式");

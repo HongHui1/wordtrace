@@ -5,19 +5,19 @@
 android
 
 ## Users
-Chinese-speaking learners using 不背单词 on Android phones and tablets.
+Chinese-speaking learners using 不背单词 on Android phones and tablets. User phone: vivo X100s, current OriginOS / Android build not specified.
 
 ## Product Purpose
-Start recording from a floating control, collect English words seen while studying, then stop and receive a file with occurrence counts.
+Accurately collect the large target vocabulary word while studying and export a simple, unique list as plain TXT. A small draggable floating ball starts and stops collection.
 
 ## Capabilities and Constraints
-Installable APK, Chinese default UI, source suitable for public GitHub hosting. User confirmed 不背单词 as initial target. OCR runs on device. Android 11+ defaults to a screenshot-only accessibility service enabled by the user, avoiding replacement of the system recording projection. Older systems retain explicitly authorized MediaProjection with a conflict warning. The floating control is a small draggable ball. Protected screens cannot be captured. Continuous visibility is one exposure, not one count per frame.
+Chinese UI, directly installable APK, public GitHub source. User explicitly prioritizes word recognition over recording coexistence and frequency statistics. Version 1.2.0 removes accessibility capture and frequency UI, uses one MediaProjection path, and warns before starting that system recording may conflict. Target words are the confirmed default. OCR glyph geometry, an offline lexicon, and consecutive-frame confirmation reduce fragments; unknown or single-letter words and fast page transitions may be missed. No screenshot storage or network permission.
 
 ## Stack
-Implementation choice: native Android Java, Material components, bundled ML Kit Latin OCR. No pre-existing source or visual assets.
+Native Android Java, Material 3 DayNight, bundled ML Kit Latin OCR, CMUdict-derived word forms. Local atomic sessions, deduplicated TXT export. Old records remain readable without rewriting their historical counts.
 
 ## Brand Commitments
-Name: wordtrace / WordTrace. Default Chinese interface. English interface is optional.
+wordtrace / WordTrace, Chinese default, quiet green palette, native controls, compact UI. Core path: small ball → study → finish → text.
 
 ## Open Decisions
-User phone: vivo X100s, reportedly on the latest system; exact Android / OriginOS build is unknown. Compatibility with the user's installed 不背单词 version requires device validation. Public repository: https://github.com/HongHui1/wordtrace.
+Actual vivo / 不背单词 behavior must still be confirmed on the user's hardware. Public repository: https://github.com/HongHui1/wordtrace.
