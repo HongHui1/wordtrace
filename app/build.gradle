@@ -4,12 +4,13 @@ android {
     namespace 'io.github.wordtrace'
     compileSdk 35
     buildToolsVersion '35.0.0'
+    buildFeatures { buildConfig true }
     defaultConfig {
         applicationId 'io.github.wordtrace'
         minSdk 26
         targetSdk 35
-        versionCode 4
-        versionName '1.2.0'
+        versionCode 5
+        versionName '1.3.0'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     def signingPath = System.getenv('WORDTRACE_KEYSTORE')

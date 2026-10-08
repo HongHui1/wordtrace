@@ -1,4 +1,4 @@
-# Design System: WordTrace 1.2
+# Design System: WordTrace 1.3
 
 The native Android app uses Material 3 DayNight with a quiet green palette. This revision simplifies the existing identity around one task: collect words, then save text.
 
@@ -18,11 +18,15 @@ Word-list dialogs contain search and alphabetically sorted words without counts.
 
 ## Floating control
 
-36dp solid circle within a 48dp touch window, draggable. Tap opens the existing 176dp menu with start / pause / resume, end-and-save / close, and collapse. Actions collapse the menu; idle timeout is eight seconds. Play, dot, pause, and ring indicate ready, recording, paused, and saving. No English labels contaminate OCR. Buttons remain at least 48dp tall.
+36dp solid circle within a 48dp touch window, draggable. Release docks to the nearest edge in 180ms using the system animation setting; side and vertical position persist. Rotation keeps the chosen edge. Tap opens a 208dp two-row menu: status and the same bubble, followed by start / pause / resume and end-save / close. The bubble stays at its anchor when expanding on the right. Actions collapse the menu; tapping the bubble collapses it, and idle timeout is eight seconds. Controls are reused, and only changed states redraw. Play, dot, pause, and ring indicate ready, recording, paused, and saving. No English labels contaminate OCR. Buttons remain at least 48dp tall.
 
 ## Permissions and feedback
 
-A single screen-sharing path. No accessibility service or capture-mode selector. Clear disclosure explains local processing and the conflict with system recording before the OS consent dialog. System sharing, permission, and save-file interfaces remain native. Settings take effect on the next recording; transient feedback uses snackbars.
+A single screen-sharing path. No accessibility service or capture-mode selector. Clear disclosure explains local processing and the conflict with system recording once before the OS consent dialog; Android's consent is requested on every start. The consent activity is an isolated, transient task, so finishing returns directly to the learning app. System sharing, permission, and save-file interfaces remain native. Settings take effect on the next recording; transient feedback uses snackbars.
+
+## 1.3 refinement
+
+Preserves the green palette and native Material identity. The wordmark gains a 32dp rounded W mark. The recording panel uses one concise instruction and shows the most recently confirmed word on the home screen during capture. History rows use a 16sp date, 13sp ellipsized preview of up to three words, a 14sp count and a drawn chevron, with a tonal ripple. Search is an outlined native field with a clear action; the list height adapts to short screens. Phone and tablet layouts were viewed with dark mode and 1.3 font scaling. Reference: Google's Now in Android public phone/tablet screenshots (https://github.com/android/nowinandroid); no reference graphics were copied into this app.
 
 ## Removed complexity
 

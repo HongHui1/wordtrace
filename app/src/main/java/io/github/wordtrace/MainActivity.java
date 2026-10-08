@@ -33,7 +33,7 @@ import java.util.concurrent.*;
 public class MainActivity extends AppCompatActivity {
     public static volatile boolean visible;
     private LinearLayout page, history;
-    private TextView status, recognitionSummary;
+    private TextView status, recognitionSummary, captureDetail;
     private MaterialButton start, finish;
     private SessionStore store;
     private SharedPreferences preferences;
@@ -82,12 +82,15 @@ public class MainActivity extends AppCompatActivity {
             view.setPadding(system.left, system.top, system.right, system.bottom); return insets;
         });
         LinearLayout header = row();
+        ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.ic_launcher); logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        logo.setBackground(background(R.color.primary,8)); logo.setClipToOutline(true);
+        LinearLayout.LayoutParams logoSize = new LinearLayout.LayoutParams(dp(32), dp(32)); logoSize.rightMargin = dp(10); header.addView(logo, logoSize);
         TextView brand = text("wordtrace", 24, true); header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
         MaterialButton help = button("使用说明", false); help.setOnClickListener(v -> showHelp()); header.addView(help); page.addView(header);
         TextView intro = text("把学过的单词，留成一份词表。", 14, false); intro.setTextColor(color(R.color.secondary_ink)); add(page, intro, 8);
         LinearLayout capture = column(); capture.setPadding(dp(20), dp(20), dp(20), dp(20)); capture.setBackground(background(R.color.primary_container, 16)); add(page, capture, 28);
         status = text("准备记录", 20, true); capture.addView(status);
-        add(capture, text("打开小球，切到学习页面开始。\n结束后自动保存，每行一个单词。", 14, false), 8);
+        captureDetail = text("打开小球，在学习页面开始。", 14, false); captureDetail.setTextColor(color(R.color.secondary_ink)); add(capture, captureDetail, 8);
         start = button("打开悬浮球", true); start.setMinHeight(dp(56)); add(capture, start, 20); start.setOnClickListener(v -> begin());
         finish = button("结束并保存", false); add(capture, finish, 8);
         finish.setOnClickListener(v -> {
@@ -98,10 +101,11 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams ruleLayout = new LinearLayout.LayoutParams(-1, dp(1)); ruleLayout.topMargin = dp(28);
         page.addView(divider(), ruleLayout);
         add(page, text("我的词表", 20, true), 28); history = column(); page.addView(history);
-        TextView privacy = text("离线识别 · 自动去重 · 不保存截图", 12, false); privacy.setTextColor(color(R.color.secondary_ink)); add(page, privacy, 32);
+        TextView privacy = text("离线识别 · 自动去重 · 不保存截图\nWordTrace " + BuildConfig.VERSION_NAME, 12, false); privacy.setTextColor(color(R.color.secondary_ink)); add(page, privacy, 32);
     }
     private void updateState() {
         status.setText(CaptureService.saving ? "正在保存记录…" : CaptureService.active ? (CaptureService.paused ? "已暂停 · " : "记录中 · ") + CaptureService.unique + " 个单词" : OverlayService.running ? "悬浮球已就绪" : "准备记录");
+        captureDetail.setText(CaptureService.active ? (CaptureService.latestWord.isEmpty() ? "正在等待清晰的大字目标词" : "最近记下：" + CaptureService.latestWord) : "打开小球，在学习页面开始。");
         start.setText(OverlayService.running ? "悬浮球已开启 · 返回学习" : "打开悬浮球"); start.setEnabled(!CaptureService.saving);
         finish.setVisibility(CaptureService.active || CaptureService.saving ? View.VISIBLE : View.GONE);
         finish.setEnabled(CaptureService.active && !CaptureService.saving);
@@ -174,12 +178,25 @@ public class MainActivity extends AppCompatActivity {
                 if (isFinishing() || isDestroyed()) return;
                 history.removeAllViews();
                 if (sessions.isEmpty()) {
+                    ImageView icon = new ImageView(this); icon.setImageResource(R.drawable.ic_wordlist); icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                    LinearLayout.LayoutParams iconSize = new LinearLayout.LayoutParams(dp(32),dp(32)); iconSize.topMargin = dp(24); history.addView(icon,iconSize);
                     add(history, text("还没有词表", 16, true), 16);
                     add(history, text("点「打开悬浮球」开始。结束后，你的单词会出现在这里，可保存为 TXT。", 14, false), 8); return;
                 }
                 for (SessionStore.Session s : sessions) {
-                    MaterialButton item = button(date(s.started) + "\n" + s.words.size() + " 个单词" + (s.status.equals("interrupted") ? " · 中断后恢复" : s.status.equals("recording") ? " · 记录中" : ""), false);
-                    item.setGravity(Gravity.START | Gravity.CENTER_VERTICAL); item.setMinHeight(dp(76)); item.setOnClickListener(v -> showSession(s)); add(history, item, 8);
+                    LinearLayout item = row(); item.setPadding(0,dp(16),0,dp(16)); item.setMinimumHeight(dp(76));
+                    LinearLayout label = column(); item.addView(label,new LinearLayout.LayoutParams(0,-2,1));
+                    label.addView(text(date(s.started),16,true));
+                    String preview = String.join(" · ", new TreeSet<>(s.words.keySet()).stream().limit(3).toArray(String[]::new));
+                    if(s.status.equals("interrupted")) preview = "中断后已保存 · " + preview;
+                    else if(s.status.equals("recording")) preview = "记录中 · " + preview;
+                    TextView example = text(preview.isEmpty() ? "未记录到单词" : preview,13,false); example.setTextColor(color(R.color.secondary_ink)); example.setSingleLine(true); example.setEllipsize(android.text.TextUtils.TruncateAt.END); add(label,example,4);
+                    TextView count = text(s.words.size()+" 词",14,false); count.setTextColor(color(R.color.primary)); count.setPadding(dp(16),0,dp(12),0); item.addView(count);
+                    ImageView arrow = new ImageView(this); arrow.setImageResource(R.drawable.ic_chevron); item.addView(arrow,new LinearLayout.LayoutParams(dp(20),dp(20)));
+                    item.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(color(R.color.primary_container)),null,background(R.color.surface,12)));
+                    item.setFocusable(true); item.setClickable(true); item.setContentDescription(date(s.started)+"，"+s.words.size()+" 个单词，查看词表");
+                    item.setOnClickListener(v -> showSession(s)); history.addView(item);
+                    history.addView(divider(), new LinearLayout.LayoutParams(-1,dp(1)));
                 }
             });
         });
@@ -188,11 +205,12 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout box = column(); box.setPadding(dp(24), 0, dp(24), 0);
         box.addView(text(s.words.size() + " 个不重复单词", 16, true));
         TextView detail = text("按字母顺序排列 · 导出为纯文本", 12, false); add(box, detail, 8);
-        EditText search = new EditText(this); search.setHint("搜索单词"); search.setSingleLine(true); search.setMinHeight(dp(48)); add(box, search, 8);
+        TextInputLayout searchField = new TextInputLayout(this); searchField.setHint("搜索单词"); searchField.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE); searchField.setEndIconMode(TextInputLayout.END_ICON_CLEAR_TEXT);
+        TextInputEditText search = new TextInputEditText(searchField.getContext()); search.setSingleLine(true); search.setMinHeight(dp(48)); search.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_FILTER); searchField.addView(search); add(box, searchField, 16);
         ListView list = new ListView(this); ArrayList<String> rows = new ArrayList<>();
         rows.addAll(new TreeSet<>(s.words.keySet()));
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, rows); list.setAdapter(adapter);
-        box.addView(list, new LinearLayout.LayoutParams(-1, dp(240)));
+        box.addView(list, new LinearLayout.LayoutParams(-1, Math.min(dp(240), getResources().getDisplayMetrics().heightPixels / 3)));
         search.addTextChangedListener(new android.text.TextWatcher() {
             public void beforeTextChanged(CharSequence c,int st,int count,int after) {}
             public void onTextChanged(CharSequence c,int st,int before,int count) { adapter.getFilter().filter(c); }
@@ -235,7 +253,7 @@ public class MainActivity extends AppCompatActivity {
     }
     private void showHelp() {
         new MaterialAlertDialogBuilder(this).setTitle("让 WordTrace 陪你记单词")
-            .setMessage("1. 打开悬浮球，切换到不背单词。\n2. 点小球 → 开始，允许系统屏幕共享。请先结束系统录屏。\n3. 正常学习，让目标词稳定停留约两秒。\n4. 点小球 → 结束并保存，回到我的词表导出 TXT。\n\n识别规则\n默认识别大字目标词，按位置重组分开的字母，用内置英文词表校验，并在连续两帧确认后保存。不会补猜缺失字母；孤立字母、未收录的生僻词、快速翻页和受保护画面可能漏记。设置里可调整内容、区域和忽略词。\n\n每个单词仅保留一次，不统计出现频率。旧词表仍保留，导出时每行一个词。\n\n所有识别在本机进行，无联网权限，不保存截图。文件先保存在应用内；卸载前请另存。\n\nWordTrace 1.2.0 · MIT\n离线 OCR 使用 Google ML Kit，词表来自 CMUdict，均遵循各自条款。本项目与不背单词无隶属关系。")
+            .setMessage("1. 打开悬浮球，切换到不背单词。\n2. 点小球 → 开始，允许系统屏幕共享。请先结束系统录屏。\n3. 正常学习，让目标词稳定停留至少一秒。\n4. 点小球 → 结束保存，回到我的词表导出 TXT。\n\n小球可以拖动，松手自动贴边并记住位置。再次点小球可收起菜单。\n\n识别规则\n默认只记字号明显大于其他英文行的目标词，避开首页菜单、词书列表和小字例句。按位置重组字母，用内置英文词表校验，并在连续两次确认后保存。不会补猜缺失字母；孤立字母、未收录的生僻词、快速翻页和受保护画面可能漏记。设置里可调整内容、区域和忽略词。离开学习页前请暂停。\n\n每个单词仅保留一次，不统计出现频率。旧词表仍保留，导出时每行一个词。\n\n所有识别在本机进行，无联网权限，不保存截图。文件先保存在应用内；卸载前请另存。\n\nWordTrace " + BuildConfig.VERSION_NAME + " · MIT\n离线 OCR 使用 Google ML Kit，词表来自 CMUdict，均遵循各自条款。本项目与不背单词无隶属关系。")
             .setPositiveButton("知道了", null).show();
     }
     @Override protected void onResume() {

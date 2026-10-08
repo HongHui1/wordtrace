@@ -14,6 +14,8 @@ public final class WordAssembler {
         float height() { return bottom - top; }
     }
     private static final Pattern WORD = Pattern.compile("[a-z]+(?:['-][a-z]+)*");
+    private static final Pattern PARTS = Pattern.compile("\\S+");
+    private static final Pattern EDGE = Pattern.compile("^[^a-z]+|[^a-z]+$");
     private final Set<String> dictionary;
     public WordAssembler(Set<String> dictionary) { this.dictionary = dictionary; }
     private boolean known(String word) {
@@ -25,13 +27,13 @@ public final class WordAssembler {
         return false;
     }
     private String clean(String raw) {
-        return raw.toLowerCase(Locale.ROOT).replace('’', '\'').replaceAll("^[^a-z]+|[^a-z]+$", "");
+        return EDGE.matcher(raw.toLowerCase(Locale.ROOT).replace('’', '\'')).replaceAll("");
     }
     public Set<String> extract(List<Span> input, boolean largestOnly) {
         List<Span> spans = new ArrayList<>();
         for (Span span : input) {
             // Some OCR elements contain spaced glyphs themselves. Preserve their approximate positions.
-            Matcher parts = Pattern.compile("\\S+").matcher(span.text);
+            Matcher parts = PARTS.matcher(span.text);
             while (parts.find()) {
                 String word = clean(parts.group());
                 if (!WORD.matcher(word).matches() || span.height() <= 0) continue;
@@ -43,7 +45,6 @@ public final class WordAssembler {
         float tallest = 0;
         for (Span span : spans) tallest = Math.max(tallest, span.height());
         final float threshold = tallest * .70f;
-        if (largestOnly) spans.removeIf(span -> span.height() < threshold);
         spans.sort(Comparator.comparingDouble((Span s) -> s.top).thenComparingDouble(s -> s.left));
         List<List<Span>> rows = new ArrayList<>();
         for (Span span : spans) {
@@ -52,13 +53,16 @@ public final class WordAssembler {
                 Span ref = candidate.get(0);
                 float overlap = Math.min(ref.bottom, span.bottom) - Math.max(ref.top, span.top);
                 if (overlap >= Math.min(ref.height(), span.height()) * .65f
-                    && Math.max(ref.height(), span.height()) <= Math.min(ref.height(), span.height()) * 1.6f) { row = candidate; break; }
+                    && Math.max(ref.height(), span.height()) <= Math.min(ref.height(), span.height()) * 1.8f) { row = candidate; break; }
             }
             if (row == null) { row = new ArrayList<>(); rows.add(row); }
             row.add(span);
         }
         Set<String> words = new TreeSet<>();
         for (List<Span> row : rows) {
+            // Ascenders and descenders make glyph boxes differ within one word.
+            // Filter rows after grouping, so short letters such as e are retained.
+            if (largestOnly && row.stream().noneMatch(s -> s.height() >= threshold)) continue;
             row.sort(Comparator.comparingDouble(s -> s.left));
             for (int i = 0; i < row.size();) {
                 Span first = row.get(i);

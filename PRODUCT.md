@@ -20,4 +20,4 @@ Native Android Java, Material 3 DayNight, bundled ML Kit Latin OCR, CMUdict-deri
 wordtrace / WordTrace, Chinese default, quiet green palette, native controls, compact UI. Core path: small ball → study → finish → text.
 
 ## Open Decisions
-Actual vivo / 不背单词 behavior must still be confirmed on the user's hardware. Public repository: https://github.com/HongHui1/wordtrace.
+Version 1.3.0 was tested on actual 不背单词 5.11.6 in MuMu Android 12. Capture processing runs in the background; target mode requires a dominant English heading, excluding measured home menus and vocabulary lists. The small ball docks and remembers its side, with a two-row menu; isolated consent returns directly to the learning app. Actual vivo behavior must still be confirmed on the user's hardware. Public repository: https://github.com/HongHui1/wordtrace.

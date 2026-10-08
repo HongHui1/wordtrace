@@ -14,10 +14,55 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.io.File;
+import java.util.Set;
+import org.junit.Assume;
 import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class DeviceIntegrationTest {
+    @Test public void targetModeRejectsMenusAndVocabularyLists() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        OcrWords words = new OcrWords(context);
+        TextRecognizer recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+        try {
+            for(String[] labels : new String[][]{{"Learn", "Review"},{"space","spacious","spatial"}}) {
+                Bitmap bitmap = Bitmap.createBitmap(1000,700,Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(bitmap); canvas.drawColor(Color.WHITE);
+                Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG); paint.setColor(Color.BLACK); paint.setTextSize(50);
+                for(int i=0;i<labels.length;i++) canvas.drawText(labels[i],100,150+i*150,paint);
+                try {
+                    Text text = Tasks.await(recognizer.process(InputImage.fromBitmap(bitmap,0)),30,TimeUnit.SECONDS);
+                    assertTrue(text.getText(), words.extract(text,true).isEmpty());
+                    assertFalse(text.getText(), words.extract(text,false).isEmpty());
+                } finally { bitmap.recycle(); }
+            }
+        } finally { recognizer.close(); }
+    }
+    /** Optional local evidence: actual app screens stay outside the source tree. */
+    @Test public void realWordCardsFromProvidedScreens() throws Exception {
+        String names = InstrumentationRegistry.getArguments().getString("realScreens");
+        Assume.assumeNotNull(names);
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        OcrWords words = new OcrWords(context);
+        TextRecognizer recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+        try {
+            for(String name : names.split(",")) {
+                assertTrue(name.matches("[a-z-]+"));
+                File file = new File(context.getFilesDir(),"ocr-fixtures/"+name+".png");
+                Bitmap bitmap = BitmapFactory.decodeFile(file.getAbsolutePath());
+                assertNotNull(file.getAbsolutePath(),bitmap);
+                float scale = Math.min(1f,960f/Math.max(bitmap.getWidth(),bitmap.getHeight()));
+                Bitmap resized = Bitmap.createScaledBitmap(bitmap,Math.round(bitmap.getWidth()*scale),Math.round(bitmap.getHeight()*scale),true);
+                if(resized != bitmap) { bitmap.recycle(); bitmap = resized; }
+                try {
+                    Text text = Tasks.await(recognizer.process(InputImage.fromBitmap(bitmap,0)),30,TimeUnit.SECONDS);
+                    Set<String> expected = name.startsWith("word-") ? Set.of(name.substring(5)) : Set.of();
+                    assertEquals(name+": "+text.getText(),expected,words.extract(text,true));
+                } finally { bitmap.recycle(); }
+            }
+        } finally { recognizer.close(); }
+    }
     @Test public void bundledOcrRecognizesWordsWithoutDownload() throws Exception {
         Bitmap bitmap = Bitmap.createBitmap(1000, 500, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap); canvas.drawColor(Color.WHITE);

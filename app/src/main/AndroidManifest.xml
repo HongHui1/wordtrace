@@ -15,7 +15,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".CaptureConsentActivity" android:exported="false" android:excludeFromRecents="true" android:theme="@style/Theme.WordTrace.Consent" />
+        <activity android:name=".CaptureConsentActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:theme="@style/Theme.WordTrace.Consent" />
         <service android:name=".CaptureService" android:exported="false" android:foregroundServiceType="mediaProjection">
         </service>
         <service android:name=".OverlayService" android:exported="false" android:foregroundServiceType="specialUse">

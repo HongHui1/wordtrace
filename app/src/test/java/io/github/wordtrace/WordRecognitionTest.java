@@ -34,6 +34,25 @@ public class WordRecognitionTest {
         assertEquals(Set.of("apple"), assembler.extract(spans,true));
         assertEquals(Set.of("apple","banana"), assembler.extract(spans,false));
     }
+    @Test public void shortGlyphsSurviveHeadingSizeSelection() {
+        assertEquals(Set.of("apple"), assembler.extract(List.of(
+            new WordAssembler.Span("a",0,20,30,60),
+            new WordAssembler.Span("p",40,20,70,80),
+            new WordAssembler.Span("p",80,20,110,80),
+            new WordAssembler.Span("l",120,0,140,60),
+            new WordAssembler.Span("e",150,20,180,60),
+            new WordAssembler.Span("banana",0,120,100,140)),true));
+    }
+    @Test public void halfSecondSamplingStillRequiresTwoStableObservations() {
+        WordCollector c = new WordCollector(Set.of());
+        c.observe(Set.of("app"),0); c.observe(Set.of("apple"),500);
+        assertTrue(c.snapshot().isEmpty());
+        c.observe(Set.of("apple"),1000);
+        assertEquals(Map.of("apple",1),c.snapshot());
+        c.resetPending(); c.observe(Set.of("banana"),1500); c.resetPending();
+        c.observe(Set.of("banana"),2000);
+        assertEquals(Map.of("apple",1),c.snapshot());
+    }
     @Test public void stableFramesDeduplicateForEntireSession() {
         WordCollector c = new WordCollector(Set.of());
         c.observe(Set.of("apple"),0); assertTrue(c.snapshot().isEmpty());

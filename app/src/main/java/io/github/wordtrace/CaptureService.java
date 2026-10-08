@@ -25,8 +25,10 @@ public class CaptureService extends Service {
     public static volatile boolean active, paused, saving;
     public static volatile int unique, total;
     public static volatile String message = "准备开始";
+    public static volatile String latestWord = "";
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService disk = Executors.newSingleThreadExecutor();
+    private final ExecutorService vision = Executors.newSingleThreadExecutor();
     private MediaProjection projection;
     private VirtualDisplay display;
     private ImageReader reader;
@@ -35,14 +37,19 @@ public class CaptureService extends Service {
     private SessionStore.Session session;
     private WordCollector collector;
     private OcrWords ocrWords;
-    private boolean stopping, busy, warmResume, hidden;
+    private volatile boolean stopping, destroyed;
+    private boolean busy, warmResume, hidden, processing;
+    private long generation, lastFrameTime;
+    private Set<String> lastWords = Collections.emptySet();
     private int width, height, density, top, bottom, errors;
     private boolean largeOnly;
     private final Runnable sample = new Runnable() {
         @Override public void run() {
             if (stopping) return;
             if (reader != null) onImage(reader);
-            main.postDelayed(this, 1000);
+            // Completion schedules the next sample when OCR is in flight. A
+            // slow task must not miss an entire polling slot and add dead time.
+            if (!busy && !stopping) main.postDelayed(this, 500);
         }
     };
 
@@ -50,7 +57,7 @@ public class CaptureService extends Service {
         @Override public void onStop() { finishRecording("interrupted"); }
         @Override public void onCapturedContentResize(int w, int h) { if (!stopping && display != null) resize(w, h); }
         @Override public void onCapturedContentVisibilityChanged(boolean visible) {
-            hidden = !visible; if (visible) warmResume = true;
+            hidden = !visible; invalidatePending();
         }
     };
     private final BroadcastReceiver screenOff = new BroadcastReceiver() {
@@ -68,7 +75,7 @@ public class CaptureService extends Service {
         if (intent == null) { stopSelf(); return START_NOT_STICKY; }
         if (STOP.equals(intent.getAction())) { finishRecording("complete"); return START_NOT_STICKY; }
         if (PAUSE.equals(intent.getAction())) {
-            if (active && !stopping) { paused = !paused; warmResume = !paused; message = paused ? "已暂停" : "识别中"; updateNotification(); }
+            if (active && !stopping) { paused = !paused; invalidatePending(); message = paused ? "已暂停" : "识别中"; updateNotification(); }
             return START_NOT_STICKY;
         }
         if (active || stopping) return START_NOT_STICKY;
@@ -83,7 +90,10 @@ public class CaptureService extends Service {
             session = store.create(); store.save(session);
             SharedPreferences settings = getSharedPreferences("settings", MODE_PRIVATE);
             collector = new WordCollector(WordCounter.tokenize(settings.getString("ignored", "")));
-            ocrWords = new OcrWords(this);
+            vision.execute(() -> {
+                try { ocrWords = new OcrWords(this); }
+                catch (java.io.IOException e) { main.post(() -> { recordError("离线词表无法读取，请重新安装应用。"); finishRecording("interrupted"); }); }
+            });
             top = settings.getInt("top", 0); bottom = settings.getInt("bottom", 100);
             largeOnly = settings.getBoolean("targetWords", true);
             recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
@@ -96,9 +106,9 @@ public class CaptureService extends Service {
             reader = newReader();
             display = projection.createVirtualDisplay("WordTrace", width, height, density,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader.getSurface(), null, main);
-            active = true; paused = false; saving = false; unique = 0; total = 0; message = "识别中";
+            active = true; paused = false; saving = false; unique = 0; total = 0; latestWord = ""; message = "识别中";
             // Let the consent activity and system transition leave the captured screen.
-            main.postDelayed(sample, 1000);
+            main.postDelayed(sample, 500);
             updateNotification();
         } catch (Exception e) {
             recordError("记录启动失败，请重新授权屏幕共享。" + e.getClass().getSimpleName());
@@ -108,6 +118,10 @@ public class CaptureService extends Service {
     }
     private boolean skipFrame() {
         return paused || hidden || MainActivity.visible || CaptureConsentActivity.visible || getSystemService(KeyguardManager.class).isKeyguardLocked();
+    }
+    private void invalidatePending() {
+        generation++; warmResume = true; lastWords = Collections.emptySet();
+        if (collector != null) collector.resetPending();
     }
     private void setSize(int w, int h) {
         float factor = Math.min(1f, 2560f / Math.max(w, h));
@@ -123,9 +137,9 @@ public class CaptureService extends Service {
         ImageReader old = reader;
         try {
             reader = newReader(); display.resize(width, height, density); display.setSurface(reader.getSurface());
-            warmResume = true;
+            invalidatePending();
         } catch (RuntimeException e) { recordError("屏幕尺寸变化，记录已保存，请重新开始。"); finishRecording("interrupted"); }
-        finally { old.close(); }
+        finally { vision.execute(old::close); }
     }
     private void onImage(ImageReader source) {
         // Keep the newest queued frame while slow devices finish the previous OCR task.
@@ -133,20 +147,41 @@ public class CaptureService extends Service {
         Image image = null;
         try {
             image = source.acquireLatestImage();
-            if (image == null || stopping || !active || busy) return;
-            if (skipFrame()) { warmResume = true; return; }
-            Image.Plane plane = image.getPlanes()[0]; ByteBuffer buffer = plane.getBuffer();
-            int rowPixels = plane.getRowStride() / plane.getPixelStride();
-            Bitmap padded = Bitmap.createBitmap(rowPixels, image.getHeight(), Bitmap.Config.ARGB_8888);
-            padded.copyPixelsFromBuffer(buffer);
-            Bitmap frame = Bitmap.createBitmap(padded, 0, 0, image.getWidth(), image.getHeight());
-            if (frame != padded) padded.recycle();
-            processFrame(frame);
+            if (skipFrame()) { invalidatePending(); return; }
+            long now = SystemClock.elapsedRealtime();
+            if (image == null) {
+                // ImageReader may not deliver another buffer for an unchanged
+                // screen. Confirm a recent observation without pretending a new
+                // frame arrived. Pause, resize and hidden windows clear this cache.
+                if (!warmResume && now - lastFrameTime <= 2000) acceptWords(lastWords, now);
+                return;
+            }
+            busy = true;
+            Image acquired = image; image = null;
+            long token = generation;
+            vision.execute(() -> readFrame(acquired, now, token));
         } catch (RuntimeException e) {
             if (!stopping) { recordError("无法读取屏幕画面，请结束后重新授权。"); finishRecording("interrupted"); }
         } finally { if (image != null) image.close(); }
     }
-    private void processFrame(Bitmap frame) {
+    private void readFrame(Image image, long sampledAt, long token) {
+        Bitmap padded = null;
+        try {
+            if (stopping) { main.post(() -> busy = false); return; }
+            Image.Plane plane = image.getPlanes()[0]; ByteBuffer buffer = plane.getBuffer();
+            int rowPixels = plane.getRowStride() / plane.getPixelStride();
+            padded = Bitmap.createBitmap(rowPixels, image.getHeight(), Bitmap.Config.ARGB_8888);
+            padded.copyPixelsFromBuffer(buffer);
+            Bitmap frame = Bitmap.createBitmap(padded, 0, 0, image.getWidth(), image.getHeight());
+            if (frame != padded) padded.recycle();
+            padded = null;
+            processFrame(frame, sampledAt, token);
+        } catch (RuntimeException e) {
+            if (padded != null && !padded.isRecycled()) padded.recycle();
+            main.post(() -> { busy = false; if (!stopping) { recordError("无法读取屏幕画面，请结束后重新授权。"); finishRecording("interrupted"); } });
+        } finally { image.close(); if (stopping && !processing) closeVision(); }
+    }
+    private void processFrame(Bitmap frame, long sampledAt, long token) {
         Bitmap prepared = frame;
         try {
             // Crop before scaling so phone-resolution letters remain legible.
@@ -155,31 +190,49 @@ public class CaptureService extends Service {
             Bitmap region = Bitmap.createBitmap(frame, 0, y, frame.getWidth(), Math.min(cropHeight, frame.getHeight() - y));
             if (region != frame) frame.recycle();
             prepared = region;
-            float scale = Math.min(1f, 2560f / Math.max(region.getWidth(), region.getHeight()));
+            // Large headings remain readable at this size while full-resolution
+            // paragraph OCR is unnecessarily expensive on slower devices.
+            float scale = Math.min(1f, (largeOnly ? 960f : 2560f) / Math.max(region.getWidth(), region.getHeight()));
             Bitmap crop = Bitmap.createScaledBitmap(region, Math.max(1, Math.round(region.getWidth() * scale)), Math.max(1, Math.round(region.getHeight() * scale)), true);
             if (crop != region) region.recycle();
             prepared = crop;
-            busy = true;
+            processing = true;
             recognizer.process(InputImage.fromBitmap(crop, 0))
-                .addOnSuccessListener(result -> {
-                    if (!stopping && active && !skipFrame()) {
-                        errors = 0;
-                        if (warmResume) { collector.resetPending(); warmResume = false; }
-                        collector.observe(ocrWords.extract(result, largeOnly), SystemClock.elapsedRealtime());
-                        Map<String, Integer> words = collector.snapshot();
-                        unique = words.size(); total = unique;
-                        message = unique == 0 ? "等待英文内容" : "已记 " + unique + " 词";
-                        if (!session.words.equals(words)) { session.words = words; checkpoint(); updateNotification(); }
-                    }
-                })
-                .addOnFailureListener(e -> {
-                    if (!stopping) { warmResume = true; message = "识别失败，正在重试"; if (++errors >= 5) { recordError("离线识别连续失败，已保存记录。请重启应用后重试。"); finishRecording("interrupted"); } }
-                })
-                .addOnCompleteListener(task -> { crop.recycle(); busy = false; });
+                .addOnCompleteListener(vision, task -> {
+                    Set<String> observed = Collections.emptySet();
+                    boolean success = task.isSuccessful();
+                    try { if (success && !stopping) observed = ocrWords.extract(task.getResult(), largeOnly); }
+                    catch (RuntimeException e) { success = false; }
+                    finally { crop.recycle(); }
+                    Set<String> result = observed; boolean ok = success;
+                    if (BuildConfig.DEBUG) android.util.Log.d("WordTraceTiming", "frame=" + sampledAt + " ocrMs=" + (SystemClock.elapsedRealtime() - sampledAt) + " words=" + result);
+                    main.post(() -> {
+                        busy = false;
+                        if (stopping || !active) return;
+                        main.removeCallbacks(sample);
+                        main.postDelayed(sample, Math.max(0, 500 - (SystemClock.elapsedRealtime() - sampledAt)));
+                        if (token != generation || skipFrame()) { invalidatePending(); return; }
+                        if (ok) { errors = 0; lastWords = result; lastFrameTime = sampledAt; acceptWords(result, sampledAt); }
+                        else { invalidatePending(); message = "识别失败，正在重试"; if (++errors >= 5) { recordError("离线识别连续失败，已保存记录。请重启应用后重试。"); finishRecording("interrupted"); } }
+                    });
+                    processing = false;
+                    if (stopping) closeVision();
+                });
         } catch (RuntimeException e) {
+            processing = false;
             if (!prepared.isRecycled()) prepared.recycle();
-            busy = false;
-            if (!stopping) { recordError("无法读取屏幕画面，请结束后重新授权。"); finishRecording("interrupted"); }
+            main.post(() -> { busy = false; if (!stopping) { recordError("无法读取屏幕画面，请结束后重新授权。"); finishRecording("interrupted"); } });
+        }
+    }
+    private void acceptWords(Set<String> observed, long now) {
+        if (warmResume) { collector.resetPending(); warmResume = false; }
+        collector.observe(observed, now);
+        Map<String, Integer> words = collector.snapshot();
+        unique = words.size(); total = unique;
+        message = unique == 0 ? "等待大字目标词" : "已记 " + unique + " 词";
+        if (!session.words.equals(words)) {
+            for (String word : words.keySet()) if (!session.words.containsKey(word)) latestWord = word;
+            session.words = words; checkpoint(); updateNotification();
         }
     }
     private SessionStore.Session copySession() {
@@ -214,9 +267,13 @@ public class CaptureService extends Service {
     private void releaseCapture() {
         main.removeCallbacks(sample);
         if (display != null) { display.release(); display = null; }
-        if (reader != null) { reader.close(); reader = null; }
+        if (reader != null) { ImageReader old = reader; reader = null; vision.execute(old::close); }
         if (projection != null) { projection.unregisterCallback(callback); projection.stop(); projection = null; }
+        vision.execute(() -> { if (!processing) closeVision(); });
+    }
+    private void closeVision() {
         if (recognizer != null) { recognizer.close(); recognizer = null; }
+        if (destroyed) vision.shutdown();
     }
     private void recordError(String error) { getSharedPreferences("settings", MODE_PRIVATE).edit().putString("error", error).apply(); }
     private PendingIntent openApp() { return PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT); }
@@ -241,7 +298,11 @@ public class CaptureService extends Service {
     @Override public void onDestroy() {
         if (!stopping) finishRecording("interrupted");
         try { unregisterReceiver(screenOff); } catch (IllegalArgumentException ignored) {}
-        disk.shutdown(); super.onDestroy();
+        disk.shutdown();
+        // Let an in-flight OCR task enqueue its final recycling callback before
+        // shutting down the executor; onDestroy may precede its completion.
+        vision.execute(() -> { destroyed = true; if (!processing) closeVision(); });
+        super.onDestroy();
     }
     @Override public IBinder onBind(Intent i) { return null; }
 }

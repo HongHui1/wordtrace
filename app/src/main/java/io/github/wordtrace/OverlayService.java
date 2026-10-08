@@ -1,6 +1,7 @@
 package io.github.wordtrace;
 
 import android.app.*;
+import android.animation.ValueAnimator;
 import android.content.*;
 import android.content.pm.ServiceInfo;
 import android.graphics.*;
@@ -16,28 +17,33 @@ import com.google.android.material.button.MaterialButton;
 public class OverlayService extends Service {
     public static volatile boolean running;
     private WindowManager windows;
-    private LinearLayout root;
+    private LinearLayout root, header;
     private Bubble bubble;
     private TextView status;
     private MaterialButton toggle, end;
     private WindowManager.LayoutParams params;
-    private boolean expanded, attached;
+    private boolean expanded, attached, rightAligned;
     private int collapsedX, collapsedY;
+    private int screenWidth, screenHeight;
+    private ValueAnimator dock;
+    private String shownState = "";
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Runnable collapse = () -> setExpanded(false);
     private final Runnable update = new Runnable() {
         @Override public void run() {
             if (root == null) return;
-            bubble.setContentDescription("WordTrace，" + CaptureService.message + "。轻触展开操作，按住拖动");
-            bubble.invalidate();
-            if (expanded) {
+            String state = CaptureService.active + ":" + CaptureService.paused + ":" + CaptureService.saving + ":" + CaptureService.message;
+            if (!shownState.equals(state)) {
+                shownState = state;
+                bubble.setContentDescription("WordTrace，" + CaptureService.message + "。轻触展开操作，按住拖动");
+                bubble.invalidate();
                 status.setText(CaptureService.message);
                 toggle.setText(CaptureService.active ? (CaptureService.paused ? "继续" : "暂停") : "开始");
                 toggle.setEnabled(!CaptureService.saving);
-                end.setText(CaptureService.active ? "结束并保存" : "关闭悬浮球");
+                end.setText(CaptureService.active ? "结束保存" : "关闭小球");
                 end.setEnabled(!CaptureService.saving);
             }
-            main.postDelayed(this, 700);
+            main.postDelayed(this, 250);
         }
     };
     @Override public void onCreate() {
@@ -56,26 +62,48 @@ public class OverlayService extends Service {
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         params = new WindowManager.LayoutParams(dp(48), dp(48), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT);
-        params.gravity = Gravity.TOP | Gravity.START; params.x = dp(8); params.y = dp(120);
+        params.gravity = Gravity.TOP | Gravity.START;
+        SharedPreferences position = getSharedPreferences("overlay", MODE_PRIVATE);
+        android.util.DisplayMetrics size = new android.util.DisplayMetrics(); windows.getDefaultDisplay().getRealMetrics(size);
+        boolean onRight = position.getBoolean("right", position.getInt("x", 0) > size.widthPixels / 2);
+        params.x = onRight ? size.widthPixels - dp(52) : dp(4); params.y = position.getInt("y", dp(120));
+        buildControls();
         setExpanded(false);
         try { windows.addView(root, params); attached = true; running = true; main.post(update); }
         catch (RuntimeException e) { root = null; stopSelf(); }
     }
     private void setExpanded(boolean show) {
         if (root == null) return;
+        if (dock != null) dock.cancel();
         main.removeCallbacks(collapse);
-        if (show && !expanded) { collapsedX = params.x; collapsedY = params.y; }
+        if (show && !expanded) {
+            collapsedX = params.x; collapsedY = params.y;
+            rightAligned = collapsedX + dp(24) > screenWidth / 2;
+            header.removeView(bubble); header.removeView(status);
+            if(rightAligned) { header.addView(status); header.addView(bubble); params.x -= dp(160); }
+            else { header.addView(bubble); header.addView(status); }
+        }
         if (!show && expanded) { params.x = collapsedX; params.y = collapsedY; }
-        expanded = show; root.removeAllViews(); root.setPadding(0,0,0,0);
-        params.width = dp(show ? 176 : 48); params.height = show ? WindowManager.LayoutParams.WRAP_CONTENT : dp(48);
+        expanded = show;
+        params.width = dp(show ? 208 : 48); params.height = show ? WindowManager.LayoutParams.WRAP_CONTENT : dp(48);
         if (show) {
             GradientDrawable bg = new GradientDrawable(); bg.setColor(color(R.color.primary_container)); bg.setCornerRadius(dp(16)); root.setBackground(bg);
         } else root.setBackgroundColor(Color.TRANSPARENT);
-        bubble = new Bubble(); root.addView(bubble, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        bubble.setOnClickListener(v -> setExpanded(!expanded));
-        if (show) {
-            status = new TextView(this); status.setText(CaptureService.message); status.setTextSize(13); status.setTextColor(color(R.color.ink)); status.setPadding(dp(12),0,dp(12),dp(4)); root.addView(status);
-            toggle = button(CaptureService.active ? (CaptureService.paused ? "继续" : "暂停") : "开始");
+        status.setVisibility(show ? View.VISIBLE : View.GONE);
+        ((View)toggle.getParent()).setVisibility(show ? View.VISIBLE : View.GONE);
+        shownState = "";
+        main.removeCallbacks(update); main.post(update);
+        if (show) main.postDelayed(collapse, 8000);
+        clamp(); if (attached) windows.updateViewLayout(root, params);
+    }
+    private void buildControls() {
+            header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL); root.addView(header);
+            bubble = new Bubble(); header.addView(bubble, new LinearLayout.LayoutParams(dp(48), dp(48)));
+            bubble.setOnClickListener(v -> setExpanded(!expanded));
+            status = new TextView(this); status.setTextSize(13); status.setTextColor(color(R.color.ink)); status.setMaxLines(2); status.setPadding(dp(4),0,dp(12),0);
+            header.addView(status, new LinearLayout.LayoutParams(0,-2,1));
+            LinearLayout actions = new LinearLayout(this); root.addView(actions);
+            toggle = button(actions, "开始");
             toggle.setOnClickListener(v -> {
                 if (CaptureService.active) startService(new Intent(this, CaptureService.class).setAction(CaptureService.PAUSE));
                 else if (!CaptureService.saving) {
@@ -84,18 +112,15 @@ public class OverlayService extends Service {
                 }
                 setExpanded(false);
             });
-            end = button(CaptureService.active ? "结束并保存" : "关闭悬浮球"); end.setOnClickListener(v -> close());
+            end = button(actions, "关闭小球"); end.setOnClickListener(v -> close());
             toggle.setEnabled(!CaptureService.saving); end.setEnabled(!CaptureService.saving);
-            button("收起").setOnClickListener(v -> setExpanded(false));
-            main.postDelayed(collapse, 8000);
-        }
-        clamp(); if (attached) windows.updateViewLayout(root, params);
     }
-    private MaterialButton button(String label) {
+    private MaterialButton button(LinearLayout parent, String label) {
         Context theme = new androidx.appcompat.view.ContextThemeWrapper(this, R.style.Theme_WordTrace);
         MaterialButton b = new MaterialButton(theme, null, com.google.android.material.R.attr.borderlessButtonStyle);
         b.setText(label); b.setTextSize(14); b.setAllCaps(false); b.setMinHeight(dp(48));
-        root.addView(b, new LinearLayout.LayoutParams(-1, -2)); return b;
+        b.setPadding(dp(4),0,dp(4),0); b.setMinWidth(0);
+        parent.addView(b, new LinearLayout.LayoutParams(0, -2, 1)); return b;
     }
     private void close() {
         if (CaptureService.active) startService(new Intent(this, CaptureService.class).setAction(CaptureService.STOP));
@@ -103,8 +128,28 @@ public class OverlayService extends Service {
     }
     private void clamp() {
         android.util.DisplayMetrics m = new android.util.DisplayMetrics(); windows.getDefaultDisplay().getRealMetrics(m);
-        params.x = Math.max(0, Math.min(params.x, m.widthPixels - params.width));
-        params.y = Math.max(0, Math.min(params.y, m.heightPixels - dp(expanded ? 256 : 72)));
+        screenWidth = m.widthPixels; screenHeight = m.heightPixels;
+        int actualHeight = expanded ? Math.max(dp(112), root.getMeasuredHeight()) : dp(48);
+        params.x = Math.max(0, Math.min(params.x, screenWidth - params.width));
+        params.y = Math.max(dp(24), Math.min(params.y, screenHeight - actualHeight - dp(24)));
+    }
+    private void savePosition() {
+        int x = expanded ? collapsedX : params.x;
+        getSharedPreferences("overlay", MODE_PRIVATE).edit().putInt("x", x).putInt("y", expanded ? collapsedY : params.y).putBoolean("right", x + dp(24) > screenWidth / 2).apply();
+    }
+    private void dockBall() {
+        if (expanded) { savePosition(); return; }
+        int target = params.x + dp(24) < screenWidth / 2 ? dp(4) : screenWidth - dp(52);
+        dock = ValueAnimator.ofInt(params.x, target); dock.setDuration(180);
+        dock.setInterpolator(new android.view.animation.DecelerateInterpolator(2));
+        dock.addUpdateListener(a -> {
+            params.x = (int)a.getAnimatedValue();
+            if (attached) windows.updateViewLayout(root, params);
+        });
+        dock.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator animation) { savePosition(); }
+        });
+        dock.start();
     }
     private final class Bubble extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -124,13 +169,13 @@ public class OverlayService extends Service {
         }
         @Override public boolean onTouchEvent(MotionEvent e) {
             switch(e.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN: sx=e.getRawX(); sy=e.getRawY(); ox=params.x; oy=params.y; moved=false; return true;
+                case MotionEvent.ACTION_DOWN: if(dock!=null) dock.cancel(); main.removeCallbacks(collapse); sx=e.getRawX(); sy=e.getRawY(); ox=params.x; oy=params.y; moved=false; return true;
                 case MotionEvent.ACTION_MOVE:
                     if (Math.abs(e.getRawX()-sx)+Math.abs(e.getRawY()-sy)>ViewConfiguration.get(getContext()).getScaledTouchSlop()) moved=true;
-                    if (moved) { params.x=ox+(int)(e.getRawX()-sx); params.y=oy+(int)(e.getRawY()-sy); clamp(); windows.updateViewLayout(root,params); if(expanded) { collapsedX=params.x; collapsedY=params.y; } }
+                    if (moved) { params.x=ox+(int)(e.getRawX()-sx); params.y=oy+(int)(e.getRawY()-sy); clamp(); windows.updateViewLayout(root,params); if(expanded) { collapsedX=params.x+(rightAligned?dp(160):0); collapsedY=params.y; } }
                     return true;
-                case MotionEvent.ACTION_UP: if (!moved) performClick(); return true;
-                case MotionEvent.ACTION_CANCEL: return true;
+                case MotionEvent.ACTION_UP: if (!moved) performClick(); else { dockBall(); if(expanded) main.postDelayed(collapse,8000); } return true;
+                case MotionEvent.ACTION_CANCEL: dockBall(); if(expanded) main.postDelayed(collapse,8000); return true;
                 default: return super.onTouchEvent(e);
             }
         }
@@ -139,9 +184,17 @@ public class OverlayService extends Service {
     private int color(int id) { return ContextCompat.getColor(this,id); }
     private int dp(float n) { return Math.round(n*getResources().getDisplayMetrics().density); }
     @Override public int onStartCommand(Intent i,int f,int id) { if(i!=null && "close".equals(i.getAction())) close(); return START_NOT_STICKY; }
-    @Override public void onConfigurationChanged(android.content.res.Configuration config) { super.onConfigurationChanged(config); if(root!=null) setExpanded(false); }
+    @Override public void onConfigurationChanged(android.content.res.Configuration config) {
+        super.onConfigurationChanged(config);
+        if(root!=null) {
+            boolean onRight = (expanded ? collapsedX : params.x) + dp(24) > screenWidth / 2;
+            setExpanded(false); params.x = onRight ? screenWidth - dp(52) : dp(4); clamp(); savePosition();
+            if(attached) windows.updateViewLayout(root,params);
+        }
+    }
     @Override public void onDestroy() {
         running=false; main.removeCallbacksAndMessages(null);
+        if(dock!=null) dock.cancel();
         if(root!=null && attached) { try { windows.removeView(root); } catch(IllegalArgumentException ignored) {} } root=null; attached=false;
         stopForeground(STOP_FOREGROUND_REMOVE); super.onDestroy();
     }

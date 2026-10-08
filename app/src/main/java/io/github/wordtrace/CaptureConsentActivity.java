@@ -16,13 +16,18 @@ public class CaptureConsentActivity extends Activity {
         super.onCreate(state);
         if (CaptureService.active || CaptureService.saving) { finish(); return; }
         if (state != null && state.getBoolean("projectionPending")) { projectionPending = true; return; }
+        if (getSharedPreferences("settings", MODE_PRIVATE).getBoolean("captureExplained", false)) { requestCapture(); return; }
         new AlertDialog.Builder(this).setTitle("开始识别单词")
             .setMessage("请在接下来的系统提示中允许屏幕共享，支持时选择不背单词。画面只在本机识别，不保存截图。\n\n请先结束系统录屏：这两个功能使用同一采集通道，不能保证同时运行。")
             .setNegativeButton("取消", (d,w) -> finish()).setOnCancelListener(d -> finish())
             .setPositiveButton("继续", (d,w) -> {
-                try { projectionPending = true; startActivityForResult(getSystemService(MediaProjectionManager.class).createScreenCaptureIntent(), 42); }
-                catch (RuntimeException e) { report("无法发起屏幕共享，请检查系统限制。"); finish(); }
+                getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("captureExplained", true).apply();
+                requestCapture();
             }).show();
+    }
+    private void requestCapture() {
+        try { projectionPending = true; startActivityForResult(getSystemService(MediaProjectionManager.class).createScreenCaptureIntent(), 42); }
+        catch (RuntimeException e) { report("无法发起屏幕共享，请检查系统限制。"); finish(); }
     }
     @Override protected void onSaveInstanceState(Bundle state) { super.onSaveInstanceState(state); state.putBoolean("projectionPending", projectionPending); }
     @Override protected void onActivityResult(int request, int result, Intent data) {
